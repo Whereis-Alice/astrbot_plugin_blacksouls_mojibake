@@ -42,7 +42,7 @@ except ImportError:
 
 
 PLUGIN_ID = "astrbot_plugin_blacksouls_mojibake"
-PLUGIN_VERSION = "0.2.6"
+PLUGIN_VERSION = "0.2.7"
 PLUGIN_DESC = "奈亚语转换工具：中文与 CP932/Shift-JIS 风格乱码互转，并支持爱丽丝里德尔触发后转换人格回复"
 PLUGIN_REPO = "https://github.com/Whereis-Alice/astrbot_plugin_blacksouls_mojibake"
 
@@ -51,6 +51,7 @@ NYAYA_ALICE_ORIGINAL_MESSAGE_EXTRA = "nyaya_alice_original_message"
 NYAYA_ALICE_PROMPT_EXTRA = "nyaya_alice_prompt"
 NYAYA_TOOL_NAME = "convert_nyaya_language"
 ALICE_EMPTY_PROMPT = "用户没有说其他内容，请按当前人格自然回应。"
+ALICE_CONTEXT_PLACEHOLDER = "（唤醒词已隐藏）"
 DEFAULT_TOOL_REQUEST_KEYWORDS = [
     "奈亚语",
     "乱码",
@@ -480,14 +481,20 @@ class BlackSoulsMojibakePlugin(Star):
             return stripped.strip(" \t\r\n:：,，。.!！?？-—")
         return normalized
 
-    def _hide_alice_phrases_in_text(self, text: str, settings: PluginSettings) -> tuple[str, bool]:
+    def _hide_alice_phrases_in_text(
+        self,
+        text: str,
+        settings: PluginSettings,
+        *,
+        empty_replacement: str = ALICE_CONTEXT_PLACEHOLDER,
+    ) -> tuple[str, bool]:
         cleaned = text
         for phrase in sorted(settings.alice_trigger_phrases, key=len, reverse=True):
             cleaned = cleaned.replace(phrase, "")
         if cleaned == text:
             return text, False
         cleaned = cleaned.strip(" \t\r\n:：,，。.!！?？-—")
-        return cleaned or ALICE_EMPTY_PROMPT, True
+        return cleaned or empty_replacement, True
 
     def _hide_alice_phrases_in_contexts(
         self,
@@ -496,7 +503,7 @@ class BlackSoulsMojibakePlugin(Star):
     ) -> int:
         changed = 0
         for ctx in request.contexts or []:
-            if not isinstance(ctx, dict) or ctx.get("role") != "user":
+            if not isinstance(ctx, dict):
                 continue
             content = ctx.get("content")
             if isinstance(content, str):
