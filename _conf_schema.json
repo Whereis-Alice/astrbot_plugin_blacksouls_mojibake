@@ -140,13 +140,27 @@
         "type": "bool",
         "description": "生成可逆奈亚语",
         "default": true,
-        "hint": "开启后，无效 CP932 字节会写成类似 ・84 的形式，能稳定转回中文；关闭后更像原始乱码，但可能不可逆。"
+        "hint": "开启后，无效 CP932 字节会被保存下来，能稳定转回中文。具体显示方式由 lossless_style 决定。"
+      },
+      "lossless_style": {
+        "type": "string",
+        "description": "可逆信息的保存方式",
+        "default": "hidden",
+        "options": [
+          "hidden",
+          "visible"
+        ],
+        "labels": [
+          "隐藏零宽字符（用户看不到 83/84/EF）",
+          "可见十六进制（例如 ・84）"
+        ],
+        "hint": "hidden 视觉上更像原始乱码，但依赖平台保留零宽字符；visible 最稳但会显示十六进制标记。"
       },
       "invalid_marker": {
         "type": "string",
         "description": "可逆奈亚语的无效字节标记",
         "default": "・",
-        "hint": "默认会生成 ・84 这类片段。修改后历史文本可能需要用旧标记才能解码。"
+        "hint": "hidden 模式下视觉上通常只看到这个字符；visible 模式会显示成类似 ・84。"
       },
       "unknown_chars": {
         "type": "string",

@@ -10,6 +10,11 @@ DEFAULT_SOURCE_ENCODING = "utf-8"
 DEFAULT_INVALID_MARKER = "・"
 DEFAULT_UNKNOWN_CHARS = "・?"
 DEFAULT_UNCERTAIN_CHAR = "□"
+DEFAULT_LOSSLESS_STYLE = "hidden"
+
+HIDDEN_BYTE_PREFIX = "\u2060"
+HIDDEN_ZERO = "\u200b"
+HIDDEN_ONE = "\u200c"
 
 _HEX_PAIR_RE = re.compile(r"^[0-9a-fA-F]{2}$")
 
@@ -63,8 +68,10 @@ def _decode_cp932_bytes_lossless(
     *,
     invalid_marker: str = DEFAULT_INVALID_MARKER,
     lossless: bool = True,
+    lossless_style: str = DEFAULT_LOSSLESS_STYLE,
 ) -> str:
     marker = invalid_marker or DEFAULT_INVALID_MARKER
+    style = lossless_style if lossless_style in {"visible", "hidden"} else DEFAULT_LOSSLESS_STYLE
     output: list[str] = []
     index = 0
     while index < len(data):
@@ -83,7 +90,10 @@ def _decode_cp932_bytes_lossless(
             output.append(bytes([byte]).decode("cp932", errors="strict"))
         except UnicodeDecodeError:
             if lossless:
-                output.append(f"{marker}{byte:02X}")
+                if style == "hidden":
+                    output.append(f"{marker}{_encode_hidden_byte(byte)}")
+                else:
+                    output.append(f"{marker}{byte:02X}")
             else:
                 output.append(marker)
         index += 1
@@ -98,6 +108,7 @@ def encode_to_mojibake(
     wrong_encoding: str = DEFAULT_WRONG_ENCODING,
     invalid_marker: str = DEFAULT_INVALID_MARKER,
     lossless: bool = True,
+    lossless_style: str = DEFAULT_LOSSLESS_STYLE,
 ) -> str:
     """Encode readable text into CP932-style mojibake.
 
@@ -117,6 +128,7 @@ def encode_to_mojibake(
             data,
             invalid_marker=invalid_marker,
             lossless=lossless,
+            lossless_style=lossless_style,
         )
 
     return data.decode(wrong_encoding, errors="replace")
@@ -139,6 +151,30 @@ def _append_encoded_char(
         stream.append(None)
 
 
+def _encode_hidden_byte(byte: int) -> str:
+    bits = "".join(HIDDEN_ONE if byte & (1 << shift) else HIDDEN_ZERO for shift in range(7, -1, -1))
+    return HIDDEN_BYTE_PREFIX + bits
+
+
+def _try_decode_hidden_byte(text: str, start: int) -> tuple[int, int] | None:
+    if start >= len(text) or text[start] != HIDDEN_BYTE_PREFIX:
+        return None
+    bit_start = start + 1
+    bit_end = bit_start + 8
+    bits = text[bit_start:bit_end]
+    if len(bits) != 8:
+        return None
+    value = 0
+    for char in bits:
+        if char == HIDDEN_ZERO:
+            value = value << 1
+        elif char == HIDDEN_ONE:
+            value = (value << 1) | 1
+        else:
+            return None
+    return value, bit_end
+
+
 def mojibake_to_byte_stream(
     text: str,
     *,
@@ -154,7 +190,15 @@ def mojibake_to_byte_stream(
     index = 0
     while index < len(text):
         if marker and text.startswith(marker, index):
-            hex_start = index + len(marker)
+            payload_start = index + len(marker)
+            hidden = _try_decode_hidden_byte(text, payload_start)
+            if hidden is not None:
+                byte, next_index = hidden
+                stream.append(byte)
+                index = next_index
+                continue
+
+            hex_start = payload_start
             hex_pair = text[hex_start : hex_start + 2]
             if len(hex_pair) == 2 and _HEX_PAIR_RE.match(hex_pair):
                 stream.append(int(hex_pair, 16))
@@ -391,4 +435,3 @@ def decode_with_score(
         changed=decoded != text,
         uncertain_count=decoded.count(uncertain_char),
     )
-

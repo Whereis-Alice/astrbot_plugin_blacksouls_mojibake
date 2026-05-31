@@ -13,6 +13,7 @@ from astrbot.api.star import Context, Star, register
 try:
     from .codec import (
         DEFAULT_INVALID_MARKER,
+        DEFAULT_LOSSLESS_STYLE,
         DEFAULT_SOURCE_ENCODING,
         DEFAULT_UNCERTAIN_CHAR,
         DEFAULT_UNKNOWN_CHARS,
@@ -24,6 +25,7 @@ try:
 except ImportError:
     from codec import (  # type: ignore[no-redef]
         DEFAULT_INVALID_MARKER,
+        DEFAULT_LOSSLESS_STYLE,
         DEFAULT_SOURCE_ENCODING,
         DEFAULT_UNCERTAIN_CHAR,
         DEFAULT_UNKNOWN_CHARS,
@@ -35,7 +37,7 @@ except ImportError:
 
 
 PLUGIN_ID = "astrbot_plugin_blacksouls_mojibake"
-PLUGIN_VERSION = "0.2.2"
+PLUGIN_VERSION = "0.2.3"
 PLUGIN_DESC = "奈亚语转换工具：中文与 CP932/Shift-JIS 风格乱码互转，并支持爱丽丝里德尔触发后转换人格回复"
 PLUGIN_REPO = "https://github.com/Whereis-Alice/astrbot_plugin_blacksouls_mojibake"
 
@@ -57,6 +59,7 @@ class PluginSettings:
     unknown_chars: str
     uncertain_char: str
     lossless_encode: bool
+    lossless_style: str
     alice_lossless_encode: bool
     tool_enabled: bool
     tool_description: str
@@ -199,6 +202,12 @@ class BlackSoulsMojibakePlugin(Star):
                 DEFAULT_UNCERTAIN_CHAR,
             ),
             lossless_encode=_read_bool(codec.get("lossless_encode"), True),
+            lossless_style=_clean_text(
+                codec.get("lossless_style"),
+                DEFAULT_LOSSLESS_STYLE,
+            )
+            if _clean_text(codec.get("lossless_style"), DEFAULT_LOSSLESS_STYLE) in {"visible", "hidden"}
+            else DEFAULT_LOSSLESS_STYLE,
             alice_lossless_encode=_read_bool(alice.get("lossless_encode"), False),
             tool_enabled=_read_bool(tool.get("enabled"), True),
             tool_description=tool_description,
@@ -261,6 +270,7 @@ class BlackSoulsMojibakePlugin(Star):
             wrong_encoding=settings.wrong_encoding,
             invalid_marker=settings.invalid_marker,
             lossless=settings.lossless_encode if lossless is None else lossless,
+            lossless_style=settings.lossless_style,
         )
         return converted
 
