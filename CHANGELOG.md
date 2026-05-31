@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.4
+
+- 改用 AstrBot 推荐的 `FunctionTool` 类方式注册 `convert_nyaya_language`，让主对话模型稳定看到奈亚语工具。
+- 保留轻量 LLM 请求提示：相关请求会提示模型使用奈亚语工具，不要绕去调用 Python 导入插件源码。
+- 新增 `llm_tool.request_keywords`，可配置哪些词触发 LLM 工具提示。
+
 ## v0.2.3
 
 - 新增 `codec.lossless_style`：默认 `hidden`，用零宽字符隐藏可逆字节信息，用户视觉上不会看到 `83/84/85/EF`。

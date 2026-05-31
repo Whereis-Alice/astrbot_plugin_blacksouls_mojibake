@@ -28,7 +28,7 @@
 
 ### 2. LLM 工具转换
 
-插件会注册一个 LLM 工具，默认名称是：
+插件会按 AstrBot 推荐的 `FunctionTool` 方式注册一个 LLM 工具，默认名称是：
 
 ```text
 convert_nyaya_language
@@ -46,7 +46,7 @@ convert_nyaya_language
 
 插件不会再因为用户单纯发送乱码就自动抢答。是否调用工具由 LLM 根据用户请求决定。
 
-为了避免模型绕去调用 Python 工具，插件默认会在相关请求里提示 LLM：转换奈亚语时优先使用 `convert_nyaya_language`，不要使用 `astrbot_execute_python` 导入插件源码。
+为了避免模型绕去调用 Python 工具，插件默认会在相关请求里提示 LLM：转换奈亚语时使用 `convert_nyaya_language`，不要使用 `astrbot_execute_python` 导入插件源码。
 
 ### 3. 爱丽丝里德尔触发
 
@@ -96,9 +96,10 @@ general.debug_log_conversions = false
 
 LLM 工具配置。
 
-- `enabled`：是否注册奈亚语转换工具。
+- `enabled`：是否启用奈亚语转换工具。
 - `description`：给 LLM 看的工具说明，决定它什么时候调用工具。
 - `inject_usage_hint`：当用户提到奈亚语/乱码/转换/翻译时，提示 LLM 优先使用 `convert_nyaya_language`，不要用 Python 工具。
+- `request_keywords`：哪些关键词会触发 LLM 工具提示，默认包含“奈亚语、乱码、转换、翻译、解读”等。
 - `auto_mode_decode_min_score`：工具 `auto` 模式判断文本是否像奈亚语的阈值。
 
 ### commands

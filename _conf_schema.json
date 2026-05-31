@@ -29,7 +29,7 @@
     "items": {
       "enabled": {
         "type": "bool",
-        "description": "注册奈亚语转换 LLM 工具",
+        "description": "启用奈亚语转换 LLM 工具",
         "default": true
       },
       "description": {
@@ -43,6 +43,25 @@
         "description": "在相关请求中提示 LLM 优先使用奈亚语工具",
         "default": true,
         "hint": "开启后，用户提到奈亚语/乱码/转换/翻译时，会提示 LLM 使用 convert_nyaya_language，而不是使用 Python 工具导入插件源码。"
+      },
+      "request_keywords": {
+        "type": "list",
+        "description": "触发 LLM 工具提示的关键词",
+        "items": {
+          "type": "string"
+        },
+        "default": [
+          "奈亚语",
+          "乱码",
+          "转成",
+          "转为",
+          "转换",
+          "翻译",
+          "解读",
+          "解释",
+          "什么意思"
+        ],
+        "hint": "用户消息包含这些词时，插件会在 LLM 请求里补一句工具提示。"
       },
       "auto_mode_decode_min_score": {
         "type": "int",
