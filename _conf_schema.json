@@ -1,0 +1,167 @@
+{
+  "enabled": {
+    "type": "bool",
+    "description": "启用 BLACKSOULS 乱码插件",
+    "default": true
+  },
+  "encode_command": {
+    "type": "string",
+    "description": "中文转乱码命令",
+    "default": "/bsmoji",
+    "hint": "可写多个别名，用英文逗号或分号分隔，例如：/bsmoji,/黑魂语"
+  },
+  "decode_command": {
+    "type": "string",
+    "description": "乱码翻译命令",
+    "default": "/bscn",
+    "hint": "可写多个别名，用英文逗号或分号分隔"
+  },
+  "alice_command": {
+    "type": "string",
+    "description": "手动触发爱丽丝低语的命令",
+    "default": "/bsalice"
+  },
+  "help_command": {
+    "type": "string",
+    "description": "帮助命令",
+    "default": "/bshelp"
+  },
+  "status_command": {
+    "type": "string",
+    "description": "状态命令",
+    "default": "/bsstatus"
+  },
+  "lossless_encode": {
+    "type": "bool",
+    "description": "生成可逆乱码",
+    "default": true,
+    "hint": "开启后，无效 CP932 字节会写成类似 ・84 的形式，方便再转回中文；关闭后更像原始乱码，但可能不可逆。"
+  },
+  "invalid_marker": {
+    "type": "string",
+    "description": "可逆乱码的无效字节标记",
+    "default": "・",
+    "hint": "默认会生成 ・84 这类片段。修改后历史乱码可能需要用旧标记才能解码。"
+  },
+  "unknown_chars": {
+    "type": "string",
+    "description": "翻译旧乱码时视为未知字节的字符",
+    "default": "・?",
+    "hint": "BLACKSOULS/老网页乱码里常把丢失字节显示成 ・ 或 ?。"
+  },
+  "uncertain_char": {
+    "type": "string",
+    "description": "无法确定的字显示为",
+    "default": "□"
+  },
+  "source_encoding": {
+    "type": "string",
+    "description": "原文编码",
+    "default": "utf-8",
+    "hint": "一般不要改。"
+  },
+  "wrong_encoding": {
+    "type": "string",
+    "description": "错读编码",
+    "default": "cp932",
+    "options": [
+      "cp932",
+      "shift_jis"
+    ],
+    "labels": [
+      "CP932 / Windows 日文",
+      "Shift-JIS"
+    ]
+  },
+  "auto_decode_enabled": {
+    "type": "bool",
+    "description": "直接收到乱码时自动翻译",
+    "default": true
+  },
+  "auto_decode_min_score": {
+    "type": "int",
+    "description": "自动翻译触发阈值",
+    "default": 6,
+    "min": 1,
+    "max": 100,
+    "hint": "越高越不容易误触发；乱码短句可适当降低。"
+  },
+  "auto_decode_min_length": {
+    "type": "int",
+    "description": "自动翻译最短消息长度",
+    "default": 6,
+    "min": 1,
+    "max": 1000
+  },
+  "auto_decode_template": {
+    "type": "text",
+    "description": "自动翻译回复模板",
+    "default": "黑魂语翻译：\n{decoded}",
+    "hint": "可用变量：{original}、{decoded}、{score}、{uncertain_count}"
+  },
+  "auto_decode_stop_event": {
+    "type": "bool",
+    "description": "自动翻译后阻止继续进入 LLM",
+    "default": true
+  },
+  "trigger_enabled": {
+    "type": "bool",
+    "description": "启用爱丽丝里德尔触发回复",
+    "default": true
+  },
+  "trigger_phrases": {
+    "type": "list",
+    "description": "触发词列表",
+    "items": {
+      "type": "string"
+    },
+    "default": [
+      "爱丽丝里德尔",
+      "爱丽丝·里德尔"
+    ]
+  },
+  "trigger_match_mode": {
+    "type": "string",
+    "description": "触发词匹配方式",
+    "default": "contains",
+    "options": [
+      "contains",
+      "exact"
+    ],
+    "labels": [
+      "包含触发词",
+      "整句完全相等"
+    ]
+  },
+  "trigger_cooldown_seconds": {
+    "type": "int",
+    "description": "同一会话触发冷却秒数",
+    "default": 30,
+    "min": 0,
+    "max": 86400
+  },
+  "trigger_replies": {
+    "type": "list",
+    "description": "爱丽丝触发时用于转乱码的原文候选",
+    "items": {
+      "type": "string"
+    },
+    "default": [
+      "落入白兔的洞穴之中\n可悲的愚蠢的小姑娘爱丽丝",
+      "被发现-被发现-被找到-被知道-被确定-被发觉-被看到-被确认-被察觉--被理解",
+      "就连这镜子里 也无法映出梦想与希望\n看呀 是爱哭鬼 爱丽丝"
+    ]
+  },
+  "trigger_reply_template": {
+    "type": "text",
+    "description": "爱丽丝触发回复模板",
+    "default": "{garbled}",
+    "hint": "可用变量：{plain}、{garbled}"
+  },
+  "trigger_stop_event": {
+    "type": "bool",
+    "description": "爱丽丝触发回复后阻止继续进入 LLM",
+    "default": true
+  }
+}
+

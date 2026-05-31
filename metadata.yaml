@@ -1,0 +1,8 @@
+name: astrbot_plugin_blacksouls_mojibake
+display_name: BLACKSOULS 乱码转换
+desc: 中文与 CP932/Shift-JIS 风格乱码互转，支持爱丽丝里德尔触发回复和自动翻译。
+version: v0.1.0
+author: Huli3
+repo: https://github.com/Whereis-Alice/astrbot_plugin_blacksouls_mojibake
+astrbot_version: ">=4.16,<5"
+
