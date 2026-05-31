@@ -1,7 +1,7 @@
 name: astrbot_plugin_blacksouls_mojibake
 display_name: BLACKSOULS 乱码转换
 desc: 奈亚语转换工具：中文与 CP932/Shift-JIS 风格乱码互转，并支持爱丽丝里德尔触发后转换人格回复。
-version: v0.2.5
+version: v0.2.6
 author: Huli3
 repo: https://github.com/Whereis-Alice/astrbot_plugin_blacksouls_mojibake
 astrbot_version: ">=4.16,<5"

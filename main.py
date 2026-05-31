@@ -42,11 +42,12 @@ except ImportError:
 
 
 PLUGIN_ID = "astrbot_plugin_blacksouls_mojibake"
-PLUGIN_VERSION = "0.2.5"
+PLUGIN_VERSION = "0.2.6"
 PLUGIN_DESC = "奈亚语转换工具：中文与 CP932/Shift-JIS 风格乱码互转，并支持爱丽丝里德尔触发后转换人格回复"
 PLUGIN_REPO = "https://github.com/Whereis-Alice/astrbot_plugin_blacksouls_mojibake"
 
 NYAYA_TRIGGER_EXTRA = "nyaya_alice_triggered"
+NYAYA_ALICE_ORIGINAL_MESSAGE_EXTRA = "nyaya_alice_original_message"
 NYAYA_ALICE_PROMPT_EXTRA = "nyaya_alice_prompt"
 NYAYA_TOOL_NAME = "convert_nyaya_language"
 ALICE_EMPTY_PROMPT = "用户没有说其他内容，请按当前人格自然回应。"
@@ -140,7 +141,12 @@ def _read_list(value: Any, default: list[str]) -> list[str]:
 
 
 def _split_command_aliases(value: str) -> list[str]:
-    return _read_list(value, [])
+    aliases: list[str] = []
+    for alias in _read_list(value, []):
+        aliases.append(alias)
+        if alias[:1] in {"/", "!", "！"}:
+            aliases.append(alias[1:])
+    return list(dict.fromkeys(alias for alias in aliases if alias))
 
 
 def _match_command(text: str, command_value: str) -> tuple[str, str] | None:
@@ -474,6 +480,43 @@ class BlackSoulsMojibakePlugin(Star):
             return stripped.strip(" \t\r\n:：,，。.!！?？-—")
         return normalized
 
+    def _hide_alice_phrases_in_text(self, text: str, settings: PluginSettings) -> tuple[str, bool]:
+        cleaned = text
+        for phrase in sorted(settings.alice_trigger_phrases, key=len, reverse=True):
+            cleaned = cleaned.replace(phrase, "")
+        if cleaned == text:
+            return text, False
+        cleaned = cleaned.strip(" \t\r\n:：,，。.!！?？-—")
+        return cleaned or ALICE_EMPTY_PROMPT, True
+
+    def _hide_alice_phrases_in_contexts(
+        self,
+        request: ProviderRequest,
+        settings: PluginSettings,
+    ) -> int:
+        changed = 0
+        for ctx in request.contexts or []:
+            if not isinstance(ctx, dict) or ctx.get("role") != "user":
+                continue
+            content = ctx.get("content")
+            if isinstance(content, str):
+                cleaned, did_change = self._hide_alice_phrases_in_text(content, settings)
+                if did_change:
+                    ctx["content"] = cleaned
+                    changed += 1
+            elif isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict) or part.get("type") != "text":
+                        continue
+                    cleaned, did_change = self._hide_alice_phrases_in_text(
+                        str(part.get("text", "")),
+                        settings,
+                    )
+                    if did_change:
+                        part["text"] = cleaned
+                        changed += 1
+        return changed
+
     def _apply_alice_prompt_override(
         self,
         event: AstrMessageEvent,
@@ -489,11 +532,13 @@ class BlackSoulsMojibakePlugin(Star):
             ALICE_EMPTY_PROMPT,
         )
         request.prompt = visible_prompt
+        changed_contexts = self._hide_alice_phrases_in_contexts(request, settings)
         logger.debug(
-            "[%s] Alice trigger prompt hidden | original_prompt=%s | llm_prompt=%s",
+            "[%s] Alice trigger prompt hidden | original_prompt=%s | llm_prompt=%s | sanitized_contexts=%s",
             PLUGIN_ID,
             self._truncate_for_log(original_prompt, settings),
             self._truncate_for_log(visible_prompt, settings),
+            changed_contexts,
         )
 
     def _matches_alice_trigger(self, text: str, settings: PluginSettings) -> bool:
@@ -507,7 +552,7 @@ class BlackSoulsMojibakePlugin(Star):
                 return True
         return False
 
-    @filter.event_message_type(filter.EventMessageType.ALL)
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=100)
     async def handle_message_triggers(self, event: AstrMessageEvent):
         settings = self._settings()
         if not settings.enabled:
@@ -566,7 +611,9 @@ class BlackSoulsMojibakePlugin(Star):
 
         visible_prompt = self._strip_alice_trigger_text(text, settings)
         event.set_extra(NYAYA_TRIGGER_EXTRA, True)
+        event.set_extra(NYAYA_ALICE_ORIGINAL_MESSAGE_EXTRA, text)
         event.set_extra(NYAYA_ALICE_PROMPT_EXTRA, visible_prompt)
+        event.message_str = visible_prompt or ALICE_EMPTY_PROMPT
         if settings.alice_wake_llm:
             event.is_at_or_wake_command = True
         logger.debug(
