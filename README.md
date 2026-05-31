@@ -6,7 +6,27 @@
 
 ## 功能
 
-### 1. LLM 工具转换
+### 1. 显式命令转换
+
+默认命令：
+
+```text
+/nyaya 文本
+/unyaya 奈亚语文本
+/nyaya_help
+```
+
+也有中文别名：
+
+```text
+/奈亚语 文本
+/解奈亚语 奈亚语文本
+/奈亚语帮助
+```
+
+这类命令是明确触发，不会影响普通聊天。
+
+### 2. LLM 工具转换
 
 插件会注册一个 LLM 工具，默认名称是：
 
@@ -26,7 +46,7 @@ convert_nyaya_language
 
 插件不会再因为用户单纯发送乱码就自动抢答。是否调用工具由 LLM 根据用户请求决定。
 
-### 2. 爱丽丝里德尔触发
+### 3. 爱丽丝里德尔触发
 
 当用户消息命中配置里的触发词，例如：
 
@@ -58,7 +78,7 @@ general.debug_log_conversions = false
 
 ## 配置说明
 
-配置被整理成 4 组。
+配置被整理成 5 组。
 
 ### general
 
@@ -76,6 +96,15 @@ LLM 工具配置。
 - `name`：工具名称，默认 `convert_nyaya_language`。
 - `description`：给 LLM 看的工具说明，决定它什么时候调用工具。
 - `auto_mode_decode_min_score`：工具 `auto` 模式判断文本是否像奈亚语的阈值。
+
+### commands
+
+显式命令配置。
+
+- `enabled`：启用命令转换。
+- `to_nyaya`：中文转奈亚语命令，默认 `/nyaya,/奈亚语`。
+- `to_chinese`：奈亚语转中文命令，默认 `/unyaya,/解奈亚语`。
+- `help`：帮助命令，默认 `/nyaya_help,/奈亚语帮助`。
 
 ### alice_trigger
 

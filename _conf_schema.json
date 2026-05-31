@@ -54,6 +54,36 @@
       }
     }
   },
+  "commands": {
+    "type": "object",
+    "description": "显式命令：直接转换奈亚语",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "启用显式命令转换",
+        "default": true,
+        "hint": "这只响应明确命令，不会因为用户随手发乱码就自动翻译。"
+      },
+      "to_nyaya": {
+        "type": "string",
+        "description": "中文转奈亚语命令",
+        "default": "/nyaya,/奈亚语",
+        "hint": "多个别名用英文逗号分隔。"
+      },
+      "to_chinese": {
+        "type": "string",
+        "description": "奈亚语转中文命令",
+        "default": "/unyaya,/解奈亚语",
+        "hint": "多个别名用英文逗号分隔。"
+      },
+      "help": {
+        "type": "string",
+        "description": "命令帮助",
+        "default": "/nyaya_help,/奈亚语帮助",
+        "hint": "多个别名用英文逗号分隔。"
+      }
+    }
+  },
   "alice_trigger": {
     "type": "object",
     "description": "爱丽丝里德尔触发：保留人格回复，只把回复转成奈亚语",

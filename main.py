@@ -41,7 +41,7 @@ except ImportError:
 
 
 PLUGIN_ID = "astrbot_plugin_blacksouls_mojibake"
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.2.1"
 PLUGIN_DESC = "奈亚语转换工具：中文与 CP932/Shift-JIS 风格乱码互转，并支持爱丽丝里德尔触发后转换人格回复"
 PLUGIN_REPO = "https://github.com/Whereis-Alice/astrbot_plugin_blacksouls_mojibake"
 
@@ -67,6 +67,10 @@ class PluginSettings:
     tool_name: str
     tool_description: str
     auto_mode_decode_min_score: int
+    commands_enabled: bool
+    to_nyaya_command: str
+    to_chinese_command: str
+    help_command: str
     alice_enabled: bool
     alice_wake_llm: bool
     alice_trigger_phrases: list[str]
@@ -112,6 +116,22 @@ def _read_list(value: Any, default: list[str]) -> list[str]:
         ]
         return [item for item in items if item] or default
     return default
+
+
+def _split_command_aliases(value: str) -> list[str]:
+    return _read_list(value, [])
+
+
+def _match_command(text: str, command_value: str) -> tuple[str, str] | None:
+    stripped = text.strip()
+    for command in _split_command_aliases(command_value):
+        if stripped == command:
+            return command, ""
+        if stripped.startswith(command):
+            rest = stripped[len(command) :]
+            if not rest or rest[0].isspace():
+                return command, rest.strip()
+    return None
 
 
 def _safe_tool_name(value: str) -> str:
@@ -194,6 +214,7 @@ class BlackSoulsMojibakePlugin(Star):
         general = self._section("general")
         codec = self._section("codec")
         tool = self._section("llm_tool")
+        commands = self._section("commands")
         alice = self._section("alice_trigger")
 
         match_mode = _clean_text(alice.get("match_mode"), "contains")
@@ -245,6 +266,10 @@ class BlackSoulsMojibakePlugin(Star):
                 minimum=1,
                 maximum=100,
             ),
+            commands_enabled=_read_bool(commands.get("enabled"), True),
+            to_nyaya_command=_clean_text(commands.get("to_nyaya"), "/nyaya,/奈亚语"),
+            to_chinese_command=_clean_text(commands.get("to_chinese"), "/unyaya,/解奈亚语"),
+            help_command=_clean_text(commands.get("help"), "/nyaya_help,/奈亚语帮助"),
             alice_enabled=_read_bool(alice.get("enabled"), True),
             alice_wake_llm=_read_bool(alice.get("wake_llm"), True),
             alice_trigger_phrases=_read_list(
@@ -362,6 +387,15 @@ class BlackSoulsMojibakePlugin(Star):
         )
         return ToolExecResult(result=f"{label}结果：\n{converted}")
 
+    def _command_help_text(self, settings: PluginSettings) -> str:
+        return (
+            "奈亚语命令：\n"
+            f"- 中文转奈亚语：{settings.to_nyaya_command} 文本\n"
+            f"- 奈亚语转中文：{settings.to_chinese_command} 文本\n"
+            f"- 帮助：{settings.help_command}\n\n"
+            "也可以直接用自然语言要求 bot 转换，LLM 会调用奈亚语工具。"
+        )
+
     def _matches_alice_trigger(self, text: str, settings: PluginSettings) -> bool:
         normalized = text.strip()
         if not normalized:
@@ -374,12 +408,58 @@ class BlackSoulsMojibakePlugin(Star):
         return False
 
     @filter.event_message_type(filter.EventMessageType.ALL)
-    async def mark_alice_trigger(self, event: AstrMessageEvent) -> None:
+    async def handle_message_triggers(self, event: AstrMessageEvent):
         settings = self._settings()
-        if not settings.enabled or not settings.alice_enabled:
+        if not settings.enabled:
             return
 
         text = _clean_text(getattr(event, "message_str", ""))
+
+        if settings.commands_enabled:
+            to_nyaya_match = _match_command(text, settings.to_nyaya_command)
+            if to_nyaya_match:
+                payload = to_nyaya_match[1]
+                if not payload:
+                    yield event.plain_result(f"用法：{settings.to_nyaya_command} 文本")
+                else:
+                    converted = self._encode(payload, settings)
+                    self._log_conversion(
+                        settings=settings,
+                        source="command",
+                        direction="to_nyaya",
+                        original=payload,
+                        converted=converted,
+                    )
+                    yield event.plain_result(converted)
+                event.stop_event()
+                return
+
+            to_chinese_match = _match_command(text, settings.to_chinese_command)
+            if to_chinese_match:
+                payload = to_chinese_match[1]
+                if not payload:
+                    yield event.plain_result(f"用法：{settings.to_chinese_command} 文本")
+                else:
+                    converted = self._decode(payload, settings)
+                    self._log_conversion(
+                        settings=settings,
+                        source="command",
+                        direction="to_chinese",
+                        original=payload,
+                        converted=converted,
+                    )
+                    yield event.plain_result(converted)
+                event.stop_event()
+                return
+
+            help_match = _match_command(text, settings.help_command)
+            if help_match:
+                yield event.plain_result(self._command_help_text(settings))
+                event.stop_event()
+                return
+
+        if not settings.alice_enabled:
+            return
         if not self._matches_alice_trigger(text, settings):
             return
 
