@@ -42,12 +42,14 @@ except ImportError:
 
 
 PLUGIN_ID = "astrbot_plugin_blacksouls_mojibake"
-PLUGIN_VERSION = "0.2.4"
+PLUGIN_VERSION = "0.2.5"
 PLUGIN_DESC = "奈亚语转换工具：中文与 CP932/Shift-JIS 风格乱码互转，并支持爱丽丝里德尔触发后转换人格回复"
 PLUGIN_REPO = "https://github.com/Whereis-Alice/astrbot_plugin_blacksouls_mojibake"
 
 NYAYA_TRIGGER_EXTRA = "nyaya_alice_triggered"
+NYAYA_ALICE_PROMPT_EXTRA = "nyaya_alice_prompt"
 NYAYA_TOOL_NAME = "convert_nyaya_language"
+ALICE_EMPTY_PROMPT = "用户没有说其他内容，请按当前人格自然回应。"
 DEFAULT_TOOL_REQUEST_KEYWORDS = [
     "奈亚语",
     "乱码",
@@ -60,8 +62,10 @@ DEFAULT_TOOL_REQUEST_KEYWORDS = [
     "什么意思",
 ]
 DEFAULT_TOOL_DESCRIPTION = (
+    "奈亚语转换工具：convert_nyaya_language\n"
     "在用户明确要求把中文转换成奈亚语，或明确要求翻译/解读奈亚语乱码时使用。"
     "不要在用户只是闲聊、发送普通乱码梗、或没有提出转换需求时主动调用。"
+    "\n调用时静默执行，不要说多余的话。"
 )
 
 
@@ -70,6 +74,7 @@ class PluginSettings:
     enabled: bool
     debug_log_conversions: bool
     debug_max_chars: int
+    include_original_text: bool
     source_encoding: str
     wrong_encoding: str
     invalid_marker: str
@@ -223,6 +228,7 @@ class BlackSoulsMojibakePlugin(Star):
 
     def _settings(self) -> PluginSettings:
         general = self._section("general")
+        display = self._section("display")
         codec = self._section("codec")
         tool = self._section("llm_tool")
         commands = self._section("commands")
@@ -246,6 +252,7 @@ class BlackSoulsMojibakePlugin(Star):
                 minimum=80,
                 maximum=5000,
             ),
+            include_original_text=_read_bool(display.get("include_original_text"), False),
             source_encoding=_clean_text(
                 codec.get("source_encoding"),
                 DEFAULT_SOURCE_ENCODING,
@@ -326,6 +333,11 @@ class BlackSoulsMojibakePlugin(Star):
             self._truncate_for_log(converted, settings),
         )
 
+    def _format_nyaya_reply(self, converted: str, original: str, settings: PluginSettings) -> str:
+        if not settings.include_original_text:
+            return converted
+        return f"{converted}（{original}）"
+
     def _encode(
         self,
         text: str,
@@ -402,18 +414,20 @@ class BlackSoulsMojibakePlugin(Star):
         if direction == "to_chinese":
             converted = self._decode(text, settings)
             label = "奈亚语转中文"
+            final_text = converted
         else:
             converted = self._encode(text, settings)
             label = "中文转奈亚语"
+            final_text = self._format_nyaya_reply(converted, text, settings)
 
         self._log_conversion(
             settings=settings,
             source="tool",
             direction=direction,
             original=text,
-            converted=converted,
+            converted=final_text,
         )
-        return f"{label}结果：\n{converted}"
+        return f"{label}结果：\n{final_text}"
 
     def _command_help_text(self, settings: PluginSettings) -> str:
         return (
@@ -449,6 +463,39 @@ class BlackSoulsMojibakePlugin(Star):
         tool.description = settings.tool_description
         return True
 
+    def _strip_alice_trigger_text(self, text: str, settings: PluginSettings) -> str:
+        normalized = text.strip()
+        for phrase in sorted(settings.alice_trigger_phrases, key=len, reverse=True):
+            if settings.alice_match_mode == "exact" and normalized == phrase:
+                return ""
+            if settings.alice_match_mode != "contains" or phrase not in normalized:
+                continue
+            stripped = normalized.replace(phrase, "", 1)
+            return stripped.strip(" \t\r\n:：,，。.!！?？-—")
+        return normalized
+
+    def _apply_alice_prompt_override(
+        self,
+        event: AstrMessageEvent,
+        request: ProviderRequest,
+        settings: PluginSettings,
+    ) -> None:
+        if not event.get_extra(NYAYA_TRIGGER_EXTRA, False):
+            return
+
+        original_prompt = _clean_text(getattr(request, "prompt", ""))
+        visible_prompt = _clean_text(
+            event.get_extra(NYAYA_ALICE_PROMPT_EXTRA, ""),
+            ALICE_EMPTY_PROMPT,
+        )
+        request.prompt = visible_prompt
+        logger.debug(
+            "[%s] Alice trigger prompt hidden | original_prompt=%s | llm_prompt=%s",
+            PLUGIN_ID,
+            self._truncate_for_log(original_prompt, settings),
+            self._truncate_for_log(visible_prompt, settings),
+        )
+
     def _matches_alice_trigger(self, text: str, settings: PluginSettings) -> bool:
         normalized = text.strip()
         if not normalized:
@@ -476,14 +523,15 @@ class BlackSoulsMojibakePlugin(Star):
                     yield event.plain_result(f"用法：{settings.to_nyaya_command} 文本")
                 else:
                     converted = self._encode(payload, settings)
+                    final_text = self._format_nyaya_reply(converted, payload, settings)
                     self._log_conversion(
                         settings=settings,
                         source="command",
                         direction="to_nyaya",
                         original=payload,
-                        converted=converted,
+                        converted=final_text,
                     )
-                    yield event.plain_result(converted)
+                    yield event.plain_result(final_text)
                 event.stop_event()
                 return
 
@@ -516,14 +564,17 @@ class BlackSoulsMojibakePlugin(Star):
         if not self._matches_alice_trigger(text, settings):
             return
 
+        visible_prompt = self._strip_alice_trigger_text(text, settings)
         event.set_extra(NYAYA_TRIGGER_EXTRA, True)
+        event.set_extra(NYAYA_ALICE_PROMPT_EXTRA, visible_prompt)
         if settings.alice_wake_llm:
             event.is_at_or_wake_command = True
         logger.debug(
-            "[%s] Alice Liddell trigger marked for session=%s wake_llm=%s",
+            "[%s] Alice Liddell trigger marked for session=%s wake_llm=%s llm_prompt=%s",
             PLUGIN_ID,
             getattr(event, "unified_msg_origin", "unknown"),
             settings.alice_wake_llm,
+            self._truncate_for_log(visible_prompt or ALICE_EMPTY_PROMPT, settings),
         )
 
     @filter.on_llm_response()
@@ -547,18 +598,19 @@ class BlackSoulsMojibakePlugin(Star):
             settings,
             lossless=settings.alice_lossless_encode,
         )
-        response.completion_text = converted
+        final_text = self._format_nyaya_reply(converted, original, settings)
+        response.completion_text = final_text
 
         chain = getattr(response, "result_chain", None)
         if hasattr(chain, "chain"):
-            chain.chain = [Plain(converted)]
+            chain.chain = [Plain(final_text)]
 
         self._log_conversion(
             settings=settings,
             source="alice_response",
             direction="to_nyaya",
             original=original,
-            converted=converted,
+            converted=final_text,
         )
 
     @filter.on_llm_request()
@@ -568,7 +620,12 @@ class BlackSoulsMojibakePlugin(Star):
         request: ProviderRequest,
     ) -> None:
         settings = self._settings()
-        if not settings.enabled or not settings.tool_enabled or not settings.inject_usage_hint:
+        if not settings.enabled:
+            return
+
+        self._apply_alice_prompt_override(event, request, settings)
+
+        if not settings.tool_enabled or not settings.inject_usage_hint:
             return
 
         has_nyaya_tool = self._sync_nyaya_tool_description(request, settings)

@@ -23,6 +23,18 @@
       }
     }
   },
+  "display": {
+    "type": "object",
+    "description": "回复显示格式",
+    "items": {
+      "include_original_text": {
+        "type": "bool",
+        "description": "奈亚语回复后附带原中文",
+        "default": false,
+        "hint": "开启后，中文转奈亚语、LLM 工具转奈亚语、爱丽丝触发回复会显示为：奈亚语（原中文）。"
+      }
+    }
+  },
   "llm_tool": {
     "type": "object",
     "description": "LLM 工具：让人格在明确被要求时转换奈亚语",
@@ -35,7 +47,7 @@
       "description": {
         "type": "text",
         "description": "工具说明",
-        "default": "在用户明确要求把中文转换成奈亚语，或明确要求翻译/解读奈亚语乱码时使用。不要在用户只是闲聊、发送普通乱码梗、或没有提出转换需求时主动调用。",
+        "default": "奈亚语转换工具：convert_nyaya_language\n在用户明确要求把中文转换成奈亚语，或明确要求翻译/解读奈亚语乱码时使用。不要在用户只是闲聊、发送普通乱码梗、或没有提出转换需求时主动调用。\n调用时静默执行，不要说多余的话。",
         "hint": "这段说明会给 LLM 看，用来决定什么时候调用工具。"
       },
       "inject_usage_hint": {
