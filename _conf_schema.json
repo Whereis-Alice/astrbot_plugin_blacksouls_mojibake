@@ -179,19 +179,21 @@
         "default": "hidden",
         "options": [
           "hidden",
-          "visible"
+          "visible",
+          "zero_width"
         ],
         "labels": [
-          "隐藏零宽字符（用户看不到 83/84/EF）",
-          "可见十六进制（例如 ・84）"
+          "隐藏 Tag 字符（推荐，手机更干净）",
+          "可见十六进制（例如 ・84）",
+          "旧版零宽字符（不推荐，手机可能露出占位符）"
         ],
-        "hint": "hidden 视觉上更像原始乱码，但依赖平台保留零宽字符；visible 最稳但会显示十六进制标记。"
+        "hint": "hidden 视觉上更像原始乱码，并改用 Unicode Tag 字符保存字节，手机 QQ 上通常不会显示成奇怪占位符；visible 最稳但会显示十六进制标记；zero_width 是旧方案，部分手机会显示出来。"
       },
       "invalid_marker": {
         "type": "string",
         "description": "可逆奈亚语的无效字节标记",
         "default": "・",
-        "hint": "hidden 模式下视觉上通常只看到这个字符；visible 模式会显示成类似 ・84。"
+        "hint": "hidden 模式下视觉上通常只看到这个字符；visible 模式会显示成类似 ・84；zero_width 旧模式可能在手机端露出不可见字符占位符。"
       },
       "unknown_chars": {
         "type": "string",

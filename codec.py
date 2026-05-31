@@ -15,6 +15,9 @@ DEFAULT_LOSSLESS_STYLE = "hidden"
 HIDDEN_BYTE_PREFIX = "\u2060"
 HIDDEN_ZERO = "\u200b"
 HIDDEN_ONE = "\u200c"
+VARIATION_SELECTOR_START = 0xFE00
+VARIATION_SELECTOR_SUPPLEMENT_START = 0xE0100
+TAG_NIBBLE_START = 0xE0030
 
 _HEX_PAIR_RE = re.compile(r"^[0-9a-fA-F]{2}$")
 
@@ -71,7 +74,11 @@ def _decode_cp932_bytes_lossless(
     lossless_style: str = DEFAULT_LOSSLESS_STYLE,
 ) -> str:
     marker = invalid_marker or DEFAULT_INVALID_MARKER
-    style = lossless_style if lossless_style in {"visible", "hidden"} else DEFAULT_LOSSLESS_STYLE
+    style = (
+        lossless_style
+        if lossless_style in {"visible", "hidden", "zero_width"}
+        else DEFAULT_LOSSLESS_STYLE
+    )
     output: list[str] = []
     index = 0
     while index < len(data):
@@ -90,10 +97,12 @@ def _decode_cp932_bytes_lossless(
             output.append(bytes([byte]).decode("cp932", errors="strict"))
         except UnicodeDecodeError:
             if lossless:
-                if style == "hidden":
-                    output.append(f"{marker}{_encode_hidden_byte(byte)}")
-                else:
+                if style == "visible":
                     output.append(f"{marker}{byte:02X}")
+                elif style == "zero_width":
+                    output.append(f"{marker}{_encode_zero_width_byte(byte)}")
+                else:
+                    output.append(f"{marker}{_encode_tag_byte(byte)}")
             else:
                 output.append(marker)
         index += 1
@@ -151,12 +160,54 @@ def _append_encoded_char(
         stream.append(None)
 
 
-def _encode_hidden_byte(byte: int) -> str:
+def _encode_tag_byte(byte: int) -> str:
+    return chr(TAG_NIBBLE_START + (byte >> 4)) + chr(TAG_NIBBLE_START + (byte & 0x0F))
+
+
+def _try_decode_tag_byte(text: str, start: int) -> tuple[int, int] | None:
+    if start + 1 >= len(text):
+        return None
+    high = ord(text[start])
+    low = ord(text[start + 1])
+    if (
+        TAG_NIBBLE_START <= high <= TAG_NIBBLE_START + 15
+        and TAG_NIBBLE_START <= low <= TAG_NIBBLE_START + 15
+    ):
+        return ((high - TAG_NIBBLE_START) << 4) | (low - TAG_NIBBLE_START), start + 2
+    return None
+
+
+def _encode_variation_byte(byte: int) -> str:
+    return chr(VARIATION_SELECTOR_START + (byte >> 4)) + chr(VARIATION_SELECTOR_START + (byte & 0x0F))
+
+
+def _try_decode_variation_byte(text: str, start: int) -> tuple[int, int] | None:
+    if start >= len(text):
+        return None
+
+    if start + 1 < len(text):
+        high = ord(text[start])
+        low = ord(text[start + 1])
+        if (
+            VARIATION_SELECTOR_START <= high <= VARIATION_SELECTOR_START + 15
+            and VARIATION_SELECTOR_START <= low <= VARIATION_SELECTOR_START + 15
+        ):
+            return ((high - VARIATION_SELECTOR_START) << 4) | (low - VARIATION_SELECTOR_START), start + 2
+
+    codepoint = ord(text[start])
+    if VARIATION_SELECTOR_START <= codepoint <= VARIATION_SELECTOR_START + 15:
+        return codepoint - VARIATION_SELECTOR_START, start + 1
+    if VARIATION_SELECTOR_SUPPLEMENT_START <= codepoint <= VARIATION_SELECTOR_SUPPLEMENT_START + 239:
+        return codepoint - VARIATION_SELECTOR_SUPPLEMENT_START + 16, start + 1
+    return None
+
+
+def _encode_zero_width_byte(byte: int) -> str:
     bits = "".join(HIDDEN_ONE if byte & (1 << shift) else HIDDEN_ZERO for shift in range(7, -1, -1))
     return HIDDEN_BYTE_PREFIX + bits
 
 
-def _try_decode_hidden_byte(text: str, start: int) -> tuple[int, int] | None:
+def _try_decode_zero_width_byte(text: str, start: int) -> tuple[int, int] | None:
     if start >= len(text) or text[start] != HIDDEN_BYTE_PREFIX:
         return None
     bit_start = start + 1
@@ -191,7 +242,21 @@ def mojibake_to_byte_stream(
     while index < len(text):
         if marker and text.startswith(marker, index):
             payload_start = index + len(marker)
-            hidden = _try_decode_hidden_byte(text, payload_start)
+            tag = _try_decode_tag_byte(text, payload_start)
+            if tag is not None:
+                byte, next_index = tag
+                stream.append(byte)
+                index = next_index
+                continue
+
+            variation = _try_decode_variation_byte(text, payload_start)
+            if variation is not None:
+                byte, next_index = variation
+                stream.append(byte)
+                index = next_index
+                continue
+
+            hidden = _try_decode_zero_width_byte(text, payload_start)
             if hidden is not None:
                 byte, next_index = hidden
                 stream.append(byte)
