@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.2
+
+- 修复爱丽丝触发路径可能出现的二次奈亚语编码：现在直接重建发送文本为一次转换结果。
+- 爱丽丝触发回复默认关闭可逆字节标记，减少 `・83`、`・84`、`・EF` 这类可逆十六进制片段。
+- 增加 `alice_trigger.lossless_encode`，需要精确可逆时可以手动开启。
+- 改用 `@filter.llm_tool` 注册固定工具 `convert_nyaya_language`，提高 AstrBot LLM 工具可见性。
+- 增加 LLM 请求提示，用户提到奈亚语/乱码转换时优先使用 `convert_nyaya_language`，不要绕去调用 Python 工具。
+
 ## v0.2.1
 
 - 补回显式命令触发：默认 `/nyaya` 转奈亚语、`/unyaya` 翻译奈亚语、`/nyaya_help` 查看帮助。

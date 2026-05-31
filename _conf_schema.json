@@ -32,17 +32,17 @@
         "description": "注册奈亚语转换 LLM 工具",
         "default": true
       },
-      "name": {
-        "type": "string",
-        "description": "工具名称",
-        "default": "convert_nyaya_language",
-        "hint": "建议只用英文、数字、下划线。修改后需要重载插件。"
-      },
       "description": {
         "type": "text",
         "description": "工具说明",
         "default": "在用户明确要求把中文转换成奈亚语，或明确要求翻译/解读奈亚语乱码时使用。不要在用户只是闲聊、发送普通乱码梗、或没有提出转换需求时主动调用。",
         "hint": "这段说明会给 LLM 看，用来决定什么时候调用工具。"
+      },
+      "inject_usage_hint": {
+        "type": "bool",
+        "description": "在相关请求中提示 LLM 优先使用奈亚语工具",
+        "default": true,
+        "hint": "开启后，用户提到奈亚语/乱码/转换/翻译时，会提示 LLM 使用 convert_nyaya_language，而不是使用 Python 工具导入插件源码。"
       },
       "auto_mode_decode_min_score": {
         "type": "int",
@@ -98,6 +98,12 @@
         "description": "命中触发词时主动唤醒 LLM",
         "default": true,
         "hint": "开启后，即使群聊里没有 @ bot，只要命中触发词也会让 bot 按当前人格回复，然后插件再把回复转成奈亚语。"
+      },
+      "lossless_encode": {
+        "type": "bool",
+        "description": "爱丽丝触发回复使用可逆奈亚语",
+        "default": false,
+        "hint": "默认关闭，让爱丽丝回复更像原始 BLACKSOULS 乱码，避免出现大量 ・83、・EF 这类可逆字节标记。命令和 LLM 工具仍使用 codec.lossless_encode。"
       },
       "trigger_phrases": {
         "type": "list",

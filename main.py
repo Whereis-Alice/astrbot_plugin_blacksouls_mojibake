@@ -4,17 +4,11 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import Field
-from pydantic.dataclasses import dataclass as pydantic_dataclass
-
-from astrbot.api import AstrBotConfig, FunctionTool, logger
+from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Plain
-from astrbot.api.provider import LLMResponse
+from astrbot.api.provider import LLMResponse, ProviderRequest
 from astrbot.api.star import Context, Star, register
-from astrbot.core.agent.run_context import ContextWrapper
-from astrbot.core.agent.tool import ToolExecResult
-from astrbot.core.astr_agent_context import AstrAgentContext
 
 try:
     from .codec import (
@@ -41,7 +35,7 @@ except ImportError:
 
 
 PLUGIN_ID = "astrbot_plugin_blacksouls_mojibake"
-PLUGIN_VERSION = "0.2.1"
+PLUGIN_VERSION = "0.2.2"
 PLUGIN_DESC = "奈亚语转换工具：中文与 CP932/Shift-JIS 风格乱码互转，并支持爱丽丝里德尔触发后转换人格回复"
 PLUGIN_REPO = "https://github.com/Whereis-Alice/astrbot_plugin_blacksouls_mojibake"
 
@@ -63,9 +57,10 @@ class PluginSettings:
     unknown_chars: str
     uncertain_char: str
     lossless_encode: bool
+    alice_lossless_encode: bool
     tool_enabled: bool
-    tool_name: str
     tool_description: str
+    inject_usage_hint: bool
     auto_mode_decode_min_score: int
     commands_enabled: bool
     to_nyaya_command: str
@@ -134,48 +129,6 @@ def _match_command(text: str, command_value: str) -> tuple[str, str] | None:
     return None
 
 
-def _safe_tool_name(value: str) -> str:
-    name = re.sub(r"[^a-zA-Z0-9_]", "_", _clean_text(value, "convert_nyaya_language"))
-    name = re.sub(r"_+", "_", name).strip("_")
-    return name or "convert_nyaya_language"
-
-
-@pydantic_dataclass
-class NyayaLanguageTool(FunctionTool[AstrAgentContext]):
-    name: str = "convert_nyaya_language"
-    description: str = DEFAULT_TOOL_DESCRIPTION
-    parameters: dict = Field(
-        default_factory=lambda: {
-            "type": "object",
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "需要转换的原文。可以是中文，也可以是奈亚语乱码。",
-                },
-                "mode": {
-                    "type": "string",
-                    "description": "转换方向。to_nyaya=中文转奈亚语；to_chinese=奈亚语转中文；auto=自动判断。",
-                    "enum": ["to_nyaya", "to_chinese", "auto"],
-                },
-            },
-            "required": ["text", "mode"],
-        }
-    )
-    plugin: Any = Field(default=None)
-
-    async def call(
-        self,
-        context: ContextWrapper[AstrAgentContext],
-        **kwargs: Any,
-    ) -> ToolExecResult:
-        if self.plugin is None:
-            return ToolExecResult(is_error=True, result="奈亚语工具未绑定插件实例。")
-        return self.plugin.convert_for_tool(
-            text=_clean_text(kwargs.get("text")),
-            mode=_clean_text(kwargs.get("mode"), "auto"),
-        )
-
-
 @register(PLUGIN_ID, "Huli3", PLUGIN_DESC, PLUGIN_VERSION, PLUGIN_REPO)
 class BlackSoulsMojibakePlugin(Star):
     """Nyaya language converter for BLACKSOULS-flavored mojibake."""
@@ -187,16 +140,6 @@ class BlackSoulsMojibakePlugin(Star):
     ) -> None:
         super().__init__(context, config)
         self.config = config or {}
-        self._tool: NyayaLanguageTool | None = None
-
-        settings = self._settings()
-        if settings.tool_enabled:
-            self._tool = NyayaLanguageTool(
-                name=settings.tool_name,
-                description=settings.tool_description,
-                plugin=self,
-            )
-            self.context.add_llm_tools(self._tool)
 
     async def initialize(self) -> None:
         logger.info("[%s] initialized", PLUGIN_ID)
@@ -221,7 +164,6 @@ class BlackSoulsMojibakePlugin(Star):
         if match_mode not in {"contains", "exact"}:
             match_mode = "contains"
 
-        tool_name = _safe_tool_name(tool.get("name", "convert_nyaya_language"))
         tool_description = _clean_text(
             tool.get("description"),
             DEFAULT_TOOL_DESCRIPTION,
@@ -257,9 +199,10 @@ class BlackSoulsMojibakePlugin(Star):
                 DEFAULT_UNCERTAIN_CHAR,
             ),
             lossless_encode=_read_bool(codec.get("lossless_encode"), True),
+            alice_lossless_encode=_read_bool(alice.get("lossless_encode"), False),
             tool_enabled=_read_bool(tool.get("enabled"), True),
-            tool_name=tool_name,
             tool_description=tool_description,
+            inject_usage_hint=_read_bool(tool.get("inject_usage_hint"), True),
             auto_mode_decode_min_score=_read_int(
                 tool.get("auto_mode_decode_min_score"),
                 6,
@@ -305,13 +248,19 @@ class BlackSoulsMojibakePlugin(Star):
             self._truncate_for_log(converted, settings),
         )
 
-    def _encode(self, text: str, settings: PluginSettings) -> str:
+    def _encode(
+        self,
+        text: str,
+        settings: PluginSettings,
+        *,
+        lossless: bool | None = None,
+    ) -> str:
         converted = encode_to_mojibake(
             text,
             source_encoding=settings.source_encoding,
             wrong_encoding=settings.wrong_encoding,
             invalid_marker=settings.invalid_marker,
-            lossless=settings.lossless_encode,
+            lossless=settings.lossless_encode if lossless is None else lossless,
         )
         return converted
 
@@ -346,14 +295,14 @@ class BlackSoulsMojibakePlugin(Star):
         }
         return aliases.get(lowered, "auto")
 
-    def convert_for_tool(self, *, text: str, mode: str = "auto") -> ToolExecResult:
+    def convert_for_tool(self, *, text: str, mode: str = "auto") -> str:
         settings = self._settings()
         if not settings.enabled:
-            return ToolExecResult(is_error=True, result="奈亚语插件当前未启用。")
+            return "奈亚语插件当前未启用。"
         if not settings.tool_enabled:
-            return ToolExecResult(is_error=True, result="奈亚语 LLM 工具当前未启用。")
+            return "奈亚语 LLM 工具当前未启用。"
         if not text:
-            return ToolExecResult(is_error=True, result="请提供需要转换的文本。")
+            return "请提供需要转换的文本。"
 
         direction = self._normalize_tool_mode(mode)
         if direction == "auto":
@@ -385,7 +334,22 @@ class BlackSoulsMojibakePlugin(Star):
             original=text,
             converted=converted,
         )
-        return ToolExecResult(result=f"{label}结果：\n{converted}")
+        return f"{label}结果：\n{converted}"
+
+    @filter.llm_tool(name="convert_nyaya_language")
+    async def convert_nyaya_language(
+        self,
+        event: AstrMessageEvent,
+        text: str,
+        mode: str = "auto",
+    ) -> str:
+        """奈亚语转换工具。仅当用户明确要求转换、翻译、解读奈亚语时使用；不要用 Python 代码自行导入插件处理。
+
+        Args:
+            text(string): 需要转换的文本。可以是中文，也可以是奈亚语乱码。
+            mode(string): 转换方向，取值为 to_nyaya、to_chinese 或 auto。
+        """
+        return self.convert_for_tool(text=text, mode=mode)
 
     def _command_help_text(self, settings: PluginSettings) -> str:
         return (
@@ -473,24 +437,6 @@ class BlackSoulsMojibakePlugin(Star):
             settings.alice_wake_llm,
         )
 
-    def _convert_plain_chain_parts(
-        self,
-        response: LLMResponse,
-        settings: PluginSettings,
-    ) -> bool:
-        chain = getattr(response, "result_chain", None)
-        components = getattr(chain, "chain", None)
-        if not isinstance(components, list):
-            return False
-
-        changed = False
-        for component in components:
-            if isinstance(component, Plain):
-                original = component.text or ""
-                component.text = self._encode(original, settings)
-                changed = True
-        return changed
-
     @filter.on_llm_response()
     async def convert_alice_response_to_nyaya(
         self,
@@ -507,13 +453,16 @@ class BlackSoulsMojibakePlugin(Star):
         if not original:
             return
 
-        converted = self._encode(original, settings)
+        converted = self._encode(
+            original,
+            settings,
+            lossless=settings.alice_lossless_encode,
+        )
         response.completion_text = converted
 
-        if not self._convert_plain_chain_parts(response, settings):
-            chain = getattr(response, "result_chain", None)
-            if hasattr(chain, "chain"):
-                chain.chain = [Plain(converted)]
+        chain = getattr(response, "result_chain", None)
+        if hasattr(chain, "chain"):
+            chain.chain = [Plain(converted)]
 
         self._log_conversion(
             settings=settings,
@@ -522,6 +471,29 @@ class BlackSoulsMojibakePlugin(Star):
             original=original,
             converted=converted,
         )
+
+    @filter.on_llm_request()
+    async def inject_nyaya_tool_hint(
+        self,
+        event: AstrMessageEvent,
+        request: ProviderRequest,
+    ) -> None:
+        settings = self._settings()
+        if not settings.enabled or not settings.tool_enabled or not settings.inject_usage_hint:
+            return
+
+        message = _clean_text(getattr(event, "message_str", ""))
+        if not any(keyword in message for keyword in ("奈亚语", "乱码", "转成", "转换", "翻译", "解读")):
+            return
+
+        hint = (
+            "\n\n[奈亚语工具提示]\n"
+            "如果用户明确要求转换、翻译或解读奈亚语/乱码，必须优先调用 "
+            "`convert_nyaya_language` 工具。不要使用 `astrbot_execute_python` 导入插件源码来转换。"
+            "工具 mode 可用：to_nyaya、to_chinese、auto。"
+        )
+        if hint not in request.system_prompt:
+            request.system_prompt = f"{request.system_prompt}{hint}" if request.system_prompt else hint.strip()
 
     async def terminate(self) -> None:
         logger.info("[%s] terminated", PLUGIN_ID)
